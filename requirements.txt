@@ -1,0 +1,6 @@
+peewee
+psycopg2-binary
+flask
+graphene
+flask_graphql
+requests
