@@ -4,6 +4,7 @@ inspect-running:
 
 .PHONY: seed-database
 seed-database:
+	rm -f app.db
 	python3 src/database.py
 
 .PHONY: rest
@@ -21,12 +22,3 @@ hybrid:
 .PHONY: client
 client:
 	python3 src/client_benchmark.py
-
-.PHONY: run
-run:
-	-rm app.db
-	$(MAKE) seed-database
-	$(MAKE) rest
-	$(MAKE) graphql
-	$(MAKE) hybrid
-	$(MAKE) client

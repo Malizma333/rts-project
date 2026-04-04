@@ -99,4 +99,9 @@ app = Flask(__name__)
 def graphql_server():
     data = request.get_json()
     result = schema.execute(data.get("query"))
-    return jsonify(result.data)
+    return jsonify(
+        {
+            "data": result.data,
+            "errors": [str(e) for e in result.errors] if result.errors else None,
+        }
+    )

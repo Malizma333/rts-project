@@ -39,14 +39,37 @@ class PostType(graphene.ObjectType):
 
 class Query(graphene.ObjectType):
     latest_post = graphene.Field(PostType, user_id=graphene.Int())
+    friends = graphene.List(graphene.Int, user_id=graphene.Int())
+    latest_friend_comment = graphene.String(user_id=graphene.Int())
 
     def resolve_latest_post(self, info, user_id):
-        return (
+        post = (
             database.Post.select()
             .where(database.Post.user == user_id)
             .order_by(database.Post.created_at.desc())
             .first()
         )
+        return post
+
+    def resolve_friends(self, info, user_id):
+        return [
+            f.friend.id
+            for f in database.Friendship.select().where(
+                database.Friendship.user == user_id
+            )
+        ]
+
+    def resolve_latest_friend_comment(self, info, user_id):
+        friends = database.Friendship.select(database.Friendship.friend).where(
+            database.Friendship.user == user_id
+        )
+        comment = (
+            database.Comment.select()
+            .where(database.Comment.user.in_(friends))
+            .order_by(database.Comment.created_at.desc())
+            .first()
+        )
+        return comment.content if comment else None
 
 
 schema = graphene.Schema(query=Query)
@@ -56,4 +79,9 @@ schema = graphene.Schema(query=Query)
 def graphql_server():
     data = request.get_json()
     result = schema.execute(data.get("query"))
-    return jsonify(result.data)
+    return jsonify(
+        {
+            "data": result.data,
+            "errors": [str(e) for e in result.errors] if result.errors else None,
+        }
+    )

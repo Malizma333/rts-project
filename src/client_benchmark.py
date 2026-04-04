@@ -100,12 +100,177 @@ def test_rest(iterations=50):
     return summarize_results(results)
 
 
+def test_graphql(iterations=50):
+    results = {
+        "create_post": [],
+        "remove_like": [],
+        "update_status": [],
+        "latest_post": [],
+        "friends": [],
+        "latest_friend_comment": [],
+    }
+
+    for _ in range(iterations):
+        user_id = rand_user()
+        post_id = rand_post()
+
+        results["create_post"].append(
+            time_request(
+                lambda: requests.post(
+                    BASE_GQL,
+                    json={
+                        "query": f'mutation {{ createPost(userId: {user_id}, content: "test post {random.randint(1, 100000)}") {{ id }} }}'
+                    },
+                )
+            )
+        )
+
+        results["update_status"].append(
+            time_request(
+                lambda: requests.post(
+                    BASE_GQL,
+                    json={
+                        "query": f'mutation {{ updateStatus(userId: {user_id}, status: "status {random.randint(1, 100000)}") {{ ok }} }}'
+                    },
+                )
+            )
+        )
+
+        results["remove_like"].append(
+            time_request(
+                lambda: requests.post(
+                    BASE_GQL,
+                    json={
+                        "query": f"mutation {{ removeLike(userId: {user_id}, postId: {post_id}) {{ ok }} }}"
+                    },
+                )
+            )
+        )
+
+        results["latest_post"].append(
+            time_request(
+                lambda: requests.post(
+                    BASE_GQL,
+                    json={
+                        "query": f"{{ latestPost(userId: {user_id}) {{ id content }} }}"
+                    },
+                )
+            )
+        )
+
+        results["friends"].append(
+            time_request(
+                lambda: requests.post(
+                    BASE_GQL,
+                    json={"query": f"{{ friends(userId: {user_id}) }}"},
+                )
+            )
+        )
+
+        results["latest_friend_comment"].append(
+            time_request(
+                lambda: requests.post(
+                    BASE_GQL,
+                    json={"query": f"{{ latestFriendComment(userId: {user_id}) }}"},
+                )
+            )
+        )
+
+    return summarize_results(results)
+
+
+def test_hybrid(iterations=50):
+    results = {
+        "create_post": [],
+        "remove_like": [],
+        "update_status": [],
+        "latest_post": [],
+        "friends": [],
+        "latest_friend_comment": [],
+    }
+
+    for _ in range(iterations):
+        user_id = rand_user()
+        post_id = rand_post()
+
+        results["create_post"].append(
+            time_request(
+                lambda: requests.post(
+                    f"{BASE_HYBRID}/create_post",
+                    json={
+                        "user_id": user_id,
+                        "content": f"hybrid post {random.randint(1, 100000)}",
+                    },
+                )
+            )
+        )
+
+        results["update_status"].append(
+            time_request(
+                lambda: requests.put(
+                    f"{BASE_HYBRID}/update_status",
+                    json={
+                        "user_id": user_id,
+                        "status": f"status {random.randint(1, 100000)}",
+                    },
+                )
+            )
+        )
+
+        results["remove_like"].append(
+            time_request(
+                lambda: requests.delete(
+                    f"{BASE_HYBRID}/remove_like",
+                    json={
+                        "user_id": user_id,
+                        "post_id": post_id,
+                    },
+                )
+            )
+        )
+
+        results["latest_post"].append(
+            time_request(
+                lambda: requests.post(
+                    f"{BASE_HYBRID}/graphql",
+                    json={
+                        "query": f"{{ latestPost(userId: {user_id}) {{ id content }} }}"
+                    },
+                )
+            )
+        )
+
+        results["friends"].append(
+            time_request(
+                lambda: requests.post(
+                    f"{BASE_HYBRID}/graphql",
+                    json={"query": f"{{ friends(userId: {user_id}) }}"},
+                )
+            )
+        )
+
+        results["latest_friend_comment"].append(
+            time_request(
+                lambda: requests.post(
+                    f"{BASE_HYBRID}/graphql",
+                    json={"query": f"{{ latestFriendComment(userId: {user_id}) }}"},
+                )
+            )
+        )
+
+    return summarize_results(results)
+
+
 def summarize_results(results):
     summary = {}
 
     for key, calls in results.items():
         times = [c["time_ms"] for c in calls]
-        success = [c for c in calls if c["status_code"] == 200]
+        success = [
+            c
+            for c in calls
+            if c["status_code"] == 200 and "errors" not in str(c["response"])
+        ]
 
         summary[key] = {
             "avg_ms": round(sum(times) / len(times), 2),
@@ -117,22 +282,9 @@ def summarize_results(results):
     return summary
 
 
-def test_graphql():
-    return {
-        "latest_post": time_request(
-            lambda: requests.post(
-                BASE_GQL, json={"query": "{ latestPost(userId:1){ id content } }"}
-            )
-        )
-    }
-
-
-def test_hybrid():
-    return None
-
-
 if __name__ == "__main__":
     from pprint import pprint
-    pprint(test_rest(100))
+
+    # pprint(test_rest(100))
     # pprint(test_graphql(100))
-    # pprint(test_hybrid(100))
+    pprint(test_hybrid(100))
