@@ -40,7 +40,7 @@ class PostType(graphene.ObjectType):
 class Query(graphene.ObjectType):
     latest_post = graphene.Field(PostType, user_id=graphene.Int())
 
-    def resolve_latest_post(root, info, user_id):
+    def resolve_latest_post(self, info, user_id):
         return (
             database.Post.select()
             .where(database.Post.user == user_id)

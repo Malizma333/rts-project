@@ -16,7 +16,7 @@ class Query(graphene.ObjectType):
     friends = graphene.List(graphene.Int, user_id=graphene.Int())
     latest_friend_comment = graphene.String(user_id=graphene.Int())
 
-    def resolve_latest_post(root, info, user_id):
+    def resolve_latest_post(self, info, user_id):
         post = (
             database.Post.select()
             .where(database.Post.user == user_id)
@@ -25,7 +25,7 @@ class Query(graphene.ObjectType):
         )
         return post
 
-    def resolve_friends(root, info, user_id):
+    def resolve_friends(self, info, user_id):
         return [
             f.friend.id
             for f in database.Friendship.select().where(
@@ -33,7 +33,7 @@ class Query(graphene.ObjectType):
             )
         ]
 
-    def resolve_latest_friend_comment(root, info, user_id):
+    def resolve_latest_friend_comment(self, info, user_id):
         friends = database.Friendship.select(database.Friendship.friend).where(
             database.Friendship.user == user_id
         )
@@ -53,7 +53,7 @@ class CreatePost(graphene.Mutation):
 
     id = graphene.Int()
 
-    def mutate(root, info, user_id, content):
+    def mutate(self, info, user_id, content):
         post = database.Post.create(user=user_id, content=content)
         return CreatePost(id=post.id)
 
@@ -65,7 +65,7 @@ class RemoveLike(graphene.Mutation):
 
     ok = graphene.Boolean()
 
-    def mutate(root, info, user_id, post_id):
+    def mutate(self, info, user_id, post_id):
         database.Like.delete().where(
             (database.Like.user == user_id) & (database.Like.post == post_id)
         ).execute()
@@ -79,7 +79,7 @@ class UpdateStatus(graphene.Mutation):
 
     ok = graphene.Boolean()
 
-    def mutate(root, info, user_id, status):
+    def mutate(self, info, user_id, status):
         database.User.update(status=status).where(database.User.id == user_id).execute()
         return UpdateStatus(ok=True)
 
@@ -95,7 +95,7 @@ schema = graphene.Schema(query=Query, mutation=Mutation)
 app = Flask(__name__)
 
 
-@app.route("/graphql", methods=["POST"])
+@app.route("/", methods=["POST"])
 def graphql_server():
     data = request.get_json()
     result = schema.execute(data.get("query"))

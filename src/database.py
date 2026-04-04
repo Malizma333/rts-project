@@ -1,8 +1,10 @@
+import random
+import string
+from datetime import datetime, timedelta
+
 import peewee
 
-DATABASE = peewee.PostgresqlDatabase(
-    "testdb", user="postgres", password="password", host="localhost", port=5432
-)
+DATABASE = peewee.SqliteDatabase("app.db")
 
 
 class BaseModel(peewee.Model):
@@ -11,11 +13,13 @@ class BaseModel(peewee.Model):
 
 
 class User(BaseModel):
+    id = peewee.AutoField()
     username = peewee.CharField()
     status = peewee.TextField(null=True)
 
 
 class Post(BaseModel):
+    id = peewee.AutoField()
     user = peewee.ForeignKeyField(User, backref="posts")
     content = peewee.TextField()
     created_at = peewee.DateTimeField(
@@ -24,16 +28,19 @@ class Post(BaseModel):
 
 
 class Like(BaseModel):
+    id = peewee.AutoField()
     user = peewee.ForeignKeyField(User)
     post = peewee.ForeignKeyField(Post)
 
 
 class Friendship(BaseModel):
+    id = peewee.AutoField()
     user = peewee.ForeignKeyField(User, backref="friends")
     friend = peewee.ForeignKeyField(User)
 
 
 class Comment(BaseModel):
+    id = peewee.AutoField()
     user = peewee.ForeignKeyField(User)
     post = peewee.ForeignKeyField(Post)
     content = peewee.TextField()
@@ -45,6 +52,111 @@ class Comment(BaseModel):
 def init_db():
     DATABASE.connect()
     DATABASE.create_tables([User, Post, Like, Friendship, Comment])
+    seed(DATABASE)
+
+
+def random_string(length=10):
+    return "".join(random.choices(string.ascii_lowercase, k=length))
+
+
+def random_sentence(words=8):
+    return " ".join(random_string(random.randint(3, 8)) for _ in range(words))
+
+
+def random_timestamp():
+    now = datetime.now()
+    delta = timedelta(days=random.randint(0, 365), seconds=random.randint(0, 86400))
+    return now - delta
+
+
+def seed(db, n=1000):
+    print("Seeding database...")
+
+    with db.atomic():
+        users = []
+        for i in range(n):
+            users.append(
+                {
+                    "username": f"user_{i}_{random_string(5)}",
+                    "status": random_sentence(6) if random.random() > 0.3 else None,
+                }
+            )
+        User.insert_many(users).execute()
+
+    users = list(User.select())
+    print(f"Inserted {len(users)} users")
+
+    with db.atomic():
+        posts = []
+        for _ in range(n):
+            user = random.choice(users)
+            posts.append(
+                {
+                    "user": user.id,
+                    "content": random_sentence(12),
+                    "created_at": random_timestamp(),
+                }
+            )
+        Post.insert_many(posts).execute()
+
+    posts = list(Post.select())
+    print(f"Inserted {len(posts)} posts")
+
+    with db.atomic():
+        likes = []
+        for _ in range(n):
+            user = random.choice(users)
+            post = random.choice(posts)
+            likes.append(
+                {
+                    "user": user.id,
+                    "post": post.id,
+                }
+            )
+        Like.insert_many(likes).execute()
+
+    print(f"Inserted {n} likes")
+
+    with db.atomic():
+        friendships = set()
+        rows = []
+
+        while len(rows) < n:
+            u1, u2 = random.sample(users, 2)
+            pair = (u1.id, u2.id)
+
+            # avoid duplicates
+            if pair not in friendships:
+                friendships.add(pair)
+                rows.append(
+                    {
+                        "user": u1.id,
+                        "friend": u2.id,
+                    }
+                )
+
+        Friendship.insert_many(rows).execute()
+
+    print(f"Inserted {n} friendships")
+
+    with db.atomic():
+        comments = []
+        for _ in range(n):
+            user = random.choice(users)
+            post = random.choice(posts)
+            comments.append(
+                {
+                    "user": user.id,
+                    "post": post.id,
+                    "content": random_sentence(10),
+                    "created_at": random_timestamp(),
+                }
+            )
+        Comment.insert_many(comments).execute()
+
+    print(f"Inserted {n} comments")
+
+    print("Seeding complete.")
 
 
 if __name__ == "__main__":
