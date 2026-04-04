@@ -1,3 +1,4 @@
+import os
 import random
 import string
 from datetime import datetime, timedelta
@@ -5,6 +6,7 @@ from datetime import datetime, timedelta
 import peewee
 
 DATABASE = peewee.SqliteDatabase("app.db")
+connected = False
 
 
 class BaseModel(peewee.Model):
@@ -50,8 +52,13 @@ class Comment(BaseModel):
 
 
 def init_db():
+    global connected
+    if connected:
+        DATABASE.close()
+        os.remove("app.db")
     DATABASE.connect()
     DATABASE.create_tables([User, Post, Like, Friendship, Comment])
+    connected = True
     seed(DATABASE)
 
 

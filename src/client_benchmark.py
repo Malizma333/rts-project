@@ -1,6 +1,7 @@
 import random
 import time
 
+import matplotlib.pyplot as plt
 import requests
 
 BASE_REST = "http://localhost:5000"
@@ -282,9 +283,39 @@ def summarize_results(results):
     return summary
 
 
+def create_plots(rest, gql, hybrid):
+    operations = sorted(set(rest.keys()) | set(gql.keys()) | set(hybrid.keys()))
+
+    for op in operations:
+        plt.figure()
+
+        values = [
+            rest.get(op, {}).get("avg_ms", 0),
+            gql.get(op, {}).get("avg_ms", 0),
+            hybrid.get(op, {}).get("avg_ms", 0),
+        ]
+
+        labels = ["REST", "GraphQL", "Hybrid"]
+
+        plt.bar(labels, values)
+        plt.ylabel("Average Response Time (ms)")
+        plt.title(f"{op} Performance")
+
+        plt.tight_layout()
+        plt.show()
+
+
 if __name__ == "__main__":
     from pprint import pprint
 
-    # pprint(test_rest(100))
-    # pprint(test_graphql(100))
-    pprint(test_hybrid(100))
+    from database import init_db
+
+    init_db()
+    rest = test_rest(100)
+    init_db()
+    graphql = test_graphql(100)
+    init_db()
+    hybrid = test_hybrid(100)
+
+    pprint({"REST": rest, "GraphQL": graphql, "Hybrid": hybrid})
+    create_plots(rest, graphql, hybrid)

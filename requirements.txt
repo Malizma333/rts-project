@@ -4,3 +4,4 @@ flask
 graphene
 flask_graphql
 requests
+matplotlib
