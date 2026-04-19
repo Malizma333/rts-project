@@ -1,6 +1,9 @@
+import csv
+import pprint
 import random
 import time
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import requests
 
@@ -263,21 +266,21 @@ def test_hybrid(iterations=50):
 
 
 def summarize_results(results):
+    pprint.pprint(results)
     summary = {}
 
     for key, calls in results.items():
-        times = [c["time_ms"] for c in calls]
-        success = [
-            c
-            for c in calls
-            if c["status_code"] == 200 and "errors" not in str(c["response"])
-        ]
+        times = [call["time_ms"] for call in calls]
+        success = 0
+        for call in calls:
+            if call["status_code"] == 200:
+                success += 1
 
         summary[key] = {
             "avg_ms": round(sum(times) / len(times), 2),
-            "min_ms": min(times),
-            "max_ms": max(times),
-            "success_rate": f"{len(success)}/{len(calls)}",
+            "min_ms": round(min(times), 2),
+            "max_ms": round(max(times), 2),
+            "success_rate": f"{success}/{len(calls)}",
         }
 
     return summary
@@ -286,6 +289,7 @@ def summarize_results(results):
 def create_plots(rest, gql, hybrid):
     operations = sorted(set(rest.keys()) | set(gql.keys()) | set(hybrid.keys()))
 
+    mpl.rcParams["font.size"] = 18
     for op in operations:
         plt.figure()
 
@@ -299,15 +303,13 @@ def create_plots(rest, gql, hybrid):
 
         plt.bar(labels, values)
         plt.ylabel("Average Response Time (ms)")
-        plt.title(f"{op} Performance")
+        plt.title(f"{op}")
 
         plt.tight_layout()
-        plt.show()
+        plt.savefig(f"out/{op}.png", bbox_inches="tight")
 
 
 if __name__ == "__main__":
-    from pprint import pprint
-
     from database import init_db
 
     init_db()
@@ -317,5 +319,36 @@ if __name__ == "__main__":
     init_db()
     hybrid = test_hybrid(100)
 
-    pprint({"REST": rest, "GraphQL": graphql, "Hybrid": hybrid})
-    create_plots(rest, graphql, hybrid)
+    csv_data = [
+        [
+            "Server",
+            "Method",
+            "Average RT (ms)",
+            "Max RT (ms)",
+            "Min RT (ms)",
+            "Success Rate",
+        ]
+    ]
+    for server in (("REST", rest), ("GraphQL", graphql), ("Hybrid", hybrid)):
+        for method in (
+            "create_post",
+            "remove_like",
+            "update_status",
+            "latest_post",
+            "friends",
+            "latest_friend_comment",
+        ):
+            csv_data.append(
+                [
+                    server[0],
+                    method,
+                    server[1][method]["avg_ms"],
+                    server[1][method]["max_ms"],
+                    server[1][method]["min_ms"],
+                    server[1][method]["success_rate"],
+                ]
+            )
+    with open("out/data.csv", "w", newline="") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerows(csv_data)
+    # create_plots(rest, graphql, hybrid)
