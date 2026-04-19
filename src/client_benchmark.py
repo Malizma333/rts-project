@@ -1,11 +1,13 @@
 import csv
-import pprint
+import datetime
 import random
 import time
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import requests
+
+from database import init_db
 
 BASE_REST = "http://localhost:5000"
 BASE_GQL = "http://localhost:5001"
@@ -17,24 +19,10 @@ def time_request(fn):
     res = fn()
     elapsed = time.time() - start
 
-    try:
-        data = res.json()
-    except Exception:
-        data = res.text
-
     return {
-        "status_code": res.status_code,
         "time_ms": round(elapsed * 1000, 2),
-        "response": data,
+        "response": res,
     }
-
-
-def rand_user():
-    return random.randint(1, 1000)
-
-
-def rand_post():
-    return random.randint(1, 1000)
 
 
 def test_rest(iterations=50):
@@ -48,58 +36,72 @@ def test_rest(iterations=50):
     }
 
     for _ in range(iterations):
-        user_id = rand_user()
-        post_id = rand_post()
+        user_id = random.randint(1, 1000)
+        post_id = random.randint(1, 1000)
 
-        results["create_post"].append(
-            time_request(
-                lambda: requests.post(
-                    f"{BASE_REST}/create_post",
-                    json={
-                        "user_id": user_id,
-                        "content": f"test post {random.randint(1, 100000)}",
-                    },
-                )
+        def create_post():
+            return requests.post(
+                f"{BASE_REST}/post",
+                json={
+                    "user_id": user_id,
+                    "content": "test post",
+                },
+            ).json()
+
+        def update_status():
+            return requests.put(
+                f"{BASE_REST}/status",
+                json={
+                    "user_id": user_id,
+                    "status": "idle",
+                },
+            ).json()
+
+        def remove_like():
+            requests.delete(
+                f"{BASE_REST}/like",
+                json={
+                    "user_id": user_id,
+                    "post_id": post_id,
+                },
+            ).json()
+
+        def latest_post():
+            user = requests.get(f"{BASE_REST}/users/{user_id}").json()
+            post = requests.get(f"{BASE_REST}/posts/{user['posts'][0]}").json()
+            return post
+
+        def friends():
+            user = requests.get(f"{BASE_REST}/users/{user_id}").json()
+            friends_list = []
+            for id in user["friends"]:
+                friends_list.append(requests.get(f"{BASE_REST}/users/{id}").json())
+            return friends_list
+
+        def latest_friend_comment():
+            user = requests.get(f"{BASE_REST}/users/{user_id}").json()
+            friends_list = []
+            for id in user["friends"]:
+                friends_list.append(requests.get(f"{BASE_REST}/users/{id}").json())
+            comments_list = []
+            for friend in friends_list:
+                for id in friend["comments"]:
+                    comments_list.append(
+                        requests.get(f"{BASE_REST}/comments/{id}").json()
+                    )
+            comments_list.sort(
+                key=lambda x: datetime.datetime.fromisoformat(x["created_at"])
             )
-        )
+            if len(comments_list) == 0:
+                return None
+            return comments_list[-1]
 
-        results["update_status"].append(
-            time_request(
-                lambda: requests.put(
-                    f"{BASE_REST}/update_status",
-                    json={
-                        "user_id": user_id,
-                        "status": f"status {random.randint(1, 100000)}",
-                    },
-                )
-            )
-        )
-
-        results["remove_like"].append(
-            time_request(
-                lambda: requests.delete(
-                    f"{BASE_REST}/remove_like",
-                    json={
-                        "user_id": user_id,
-                        "post_id": post_id,
-                    },
-                )
-            )
-        )
-
-        results["latest_post"].append(
-            time_request(lambda: requests.get(f"{BASE_REST}/latest_post/{user_id}"))
-        )
-
-        results["friends"].append(
-            time_request(lambda: requests.get(f"{BASE_REST}/friends/{user_id}"))
-        )
-
-        results["latest_friend_comment"].append(
-            time_request(
-                lambda: requests.get(f"{BASE_REST}/latest_friend_comment/{user_id}")
-            )
-        )
+        results["create_post"].append(time_request(create_post))
+        results["update_status"].append(time_request(update_status))
+        results["remove_like"].append(time_request(remove_like))
+        results["latest_post"].append(time_request(latest_post))
+        results["friends"].append(time_request(friends))
+        results["latest_friend_comment"].append(time_request(latest_friend_comment))
 
     return summarize_results(results)
 
@@ -115,70 +117,100 @@ def test_graphql(iterations=50):
     }
 
     for _ in range(iterations):
-        user_id = rand_user()
-        post_id = rand_post()
+        user_id = random.randint(1, 1000)
+        post_id = random.randint(1, 1000)
 
-        results["create_post"].append(
-            time_request(
-                lambda: requests.post(
-                    BASE_GQL,
-                    json={
-                        "query": f'mutation {{ createPost(userId: {user_id}, content: "test post {random.randint(1, 100000)}") {{ id }} }}'
-                    },
-                )
-            )
-        )
+        def create_post():
+            return requests.post(
+                BASE_GQL,
+                json={
+                    "query": f'mutation {{ createPost(userId: {user_id}, content: "test post") {{ id }} }}'
+                },
+            ).json()["data"]["createPost"]
 
-        results["update_status"].append(
-            time_request(
-                lambda: requests.post(
-                    BASE_GQL,
-                    json={
-                        "query": f'mutation {{ updateStatus(userId: {user_id}, status: "status {random.randint(1, 100000)}") {{ ok }} }}'
-                    },
-                )
-            )
-        )
+        def update_status():
+            return requests.post(
+                BASE_GQL,
+                json={
+                    "query": f'mutation {{ updateStatus(userId: {user_id}, status: "idle") {{ ok }} }}'
+                },
+            ).json()["data"]["updateStatus"]
 
-        results["remove_like"].append(
-            time_request(
-                lambda: requests.post(
-                    BASE_GQL,
-                    json={
-                        "query": f"mutation {{ removeLike(userId: {user_id}, postId: {post_id}) {{ ok }} }}"
-                    },
-                )
-            )
-        )
+        def remove_like():
+            return requests.post(
+                BASE_GQL,
+                json={
+                    "query": f"mutation {{ removeLike(userId: {user_id}, postId: {post_id}) {{ ok }} }}"
+                },
+            ).json()["data"]["removeLike"]
 
-        results["latest_post"].append(
-            time_request(
-                lambda: requests.post(
-                    BASE_GQL,
-                    json={
-                        "query": f"{{ latestPost(userId: {user_id}) {{ id content }} }}"
-                    },
-                )
-            )
-        )
+        def latest_post():
+            return requests.post(
+                BASE_GQL,
+                json={
+                    "query": f"""
+                    {{
+                    user(id: {user_id}) {{
+                        posts {{
+                        id
+                        content
+                        }}
+                    }}
+                    }}
+                    """
+                },
+            ).json()["data"]["user"]["posts"][0]
 
-        results["friends"].append(
-            time_request(
-                lambda: requests.post(
-                    BASE_GQL,
-                    json={"query": f"{{ friends(userId: {user_id}) }}"},
-                )
-            )
-        )
+        def friends():
+            return requests.post(
+                BASE_GQL,
+                json={
+                    "query": f"""
+                    {{
+                    user(id: {user_id}) {{
+                        friends {{
+                            username
+                        }}
+                    }}
+                    }}
+                    """
+                },
+            ).json()["data"]["user"]["friends"]
 
-        results["latest_friend_comment"].append(
-            time_request(
-                lambda: requests.post(
-                    BASE_GQL,
-                    json={"query": f"{{ latestFriendComment(userId: {user_id}) }}"},
-                )
+        def latest_friend_comment():
+            friends = requests.post(
+                BASE_GQL,
+                json={
+                    "query": f"""
+                    {{
+                    user(id: {user_id}) {{
+                        friends {{
+                        comments {{
+                            content
+                            createdAt
+                        }}
+                        }}
+                    }}
+                    }}
+                    """
+                },
+            ).json()["data"]["user"]["friends"]
+            comments = []
+            for friend in friends:
+                comments.extend(friend["comments"])
+            comments.sort(
+                key=lambda x: datetime.datetime.fromisoformat(x["createdAt"])
             )
-        )
+            if len(comments) == 0:
+                return None
+            return comments[-1]
+
+        results["create_post"].append(time_request(create_post))
+        results["update_status"].append(time_request(update_status))
+        results["remove_like"].append(time_request(remove_like))
+        results["latest_post"].append(time_request(latest_post))
+        results["friends"].append(time_request(friends))
+        results["latest_friend_comment"].append(time_request(latest_friend_comment))
 
     return summarize_results(results)
 
@@ -194,93 +226,123 @@ def test_hybrid(iterations=50):
     }
 
     for _ in range(iterations):
-        user_id = rand_user()
-        post_id = rand_post()
+        user_id = random.randint(1, 1000)
+        post_id = random.randint(1, 1000)
 
-        results["create_post"].append(
-            time_request(
-                lambda: requests.post(
-                    f"{BASE_HYBRID}/create_post",
-                    json={
-                        "user_id": user_id,
-                        "content": f"hybrid post {random.randint(1, 100000)}",
-                    },
-                )
-            )
-        )
+        def create_post():
+            return requests.post(
+                f"{BASE_HYBRID}/post",
+                json={
+                    "user_id": user_id,
+                    "content": "test post",
+                },
+            ).json()
 
-        results["update_status"].append(
-            time_request(
-                lambda: requests.put(
-                    f"{BASE_HYBRID}/update_status",
-                    json={
-                        "user_id": user_id,
-                        "status": f"status {random.randint(1, 100000)}",
-                    },
-                )
-            )
-        )
+        def update_status():
+            return requests.put(
+                f"{BASE_HYBRID}/status",
+                json={
+                    "user_id": user_id,
+                    "status": "idle",
+                },
+            ).json()
 
-        results["remove_like"].append(
-            time_request(
-                lambda: requests.delete(
-                    f"{BASE_HYBRID}/remove_like",
-                    json={
-                        "user_id": user_id,
-                        "post_id": post_id,
-                    },
-                )
-            )
-        )
+        def remove_like():
+            requests.delete(
+                f"{BASE_HYBRID}/like",
+                json={
+                    "user_id": user_id,
+                    "post_id": post_id,
+                },
+            ).json()
 
-        results["latest_post"].append(
-            time_request(
-                lambda: requests.post(
-                    f"{BASE_HYBRID}/graphql",
-                    json={
-                        "query": f"{{ latestPost(userId: {user_id}) {{ id content }} }}"
-                    },
-                )
-            )
-        )
+        def latest_post():
+            return requests.post(
+                f"{BASE_HYBRID}/graphql",
+                json={
+                    "query": f"""
+                    {{
+                    user(id: {user_id}) {{
+                        posts {{
+                        id
+                        content
+                        }}
+                    }}
+                    }}
+                    """
+                },
+            ).json()["data"]["user"]["posts"][0]
 
-        results["friends"].append(
-            time_request(
-                lambda: requests.post(
-                    f"{BASE_HYBRID}/graphql",
-                    json={"query": f"{{ friends(userId: {user_id}) }}"},
-                )
-            )
-        )
+        def friends():
+            return requests.post(
+                f"{BASE_HYBRID}/graphql",
+                json={
+                    "query": f"""
+                    {{
+                    user(id: {user_id}) {{
+                        friends {{
+                            username
+                        }}
+                    }}
+                    }}
+                    """
+                },
+            ).json()["data"]["user"]["friends"]
 
-        results["latest_friend_comment"].append(
-            time_request(
-                lambda: requests.post(
-                    f"{BASE_HYBRID}/graphql",
-                    json={"query": f"{{ latestFriendComment(userId: {user_id}) }}"},
-                )
+        def latest_friend_comment():
+            friends = requests.post(
+                f"{BASE_HYBRID}/graphql",
+                json={
+                    "query": f"""
+                    {{
+                    user(id: {user_id}) {{
+                        friends {{
+                            comments {{
+                                content
+                                createdAt
+                            }}
+                        }}
+                    }}
+                    }}
+                    """
+                },
+            ).json()["data"]["user"]["friends"]
+            comments = []
+            for friend in friends:
+                comments.extend(friend["comments"])
+            comments.sort(
+                key=lambda x: datetime.datetime.fromisoformat(x["createdAt"])
             )
-        )
+            if len(comments) == 0:
+                return None
+            return comments[-1]
+
+        results["create_post"].append(time_request(create_post))
+        results["update_status"].append(time_request(update_status))
+        results["remove_like"].append(time_request(remove_like))
+        results["latest_post"].append(time_request(latest_post))
+        results["friends"].append(time_request(friends))
+        results["latest_friend_comment"].append(time_request(latest_friend_comment))
 
     return summarize_results(results)
 
 
 def summarize_results(results):
-    pprint.pprint(results)
     summary = {}
 
     for key, calls in results.items():
+        print(key, calls)
         times = [call["time_ms"] for call in calls]
-        success = 0
-        for call in calls:
-            if call["status_code"] == 200:
-                success += 1
+
+        if len(times) == 0:
+            avg = 0
+        else:
+            avg = round(sum(times) / len(times), 2)
 
         summary[key] = {
-            "avg_ms": round(sum(times) / len(times), 2),
+            "avg_ms": avg,
             "min_ms": round(min(times), 2),
             "max_ms": round(max(times), 2),
-            "success_rate": f"{success}/{len(calls)}",
         }
 
     return summary
@@ -309,16 +371,7 @@ def create_plots(rest, gql, hybrid):
         plt.savefig(f"out/{op}.png", bbox_inches="tight")
 
 
-if __name__ == "__main__":
-    from database import init_db
-
-    init_db()
-    rest = test_rest(100)
-    init_db()
-    graphql = test_graphql(100)
-    init_db()
-    hybrid = test_hybrid(100)
-
+def create_csvs(rest, gql, hybrid):
     csv_data = [
         [
             "Server",
@@ -326,10 +379,10 @@ if __name__ == "__main__":
             "Average RT (ms)",
             "Max RT (ms)",
             "Min RT (ms)",
-            "Success Rate",
         ]
     ]
-    for server in (("REST", rest), ("GraphQL", graphql), ("Hybrid", hybrid)):
+
+    for server in (("REST", rest), ("GraphQL", gql), ("Hybrid", hybrid)):
         for method in (
             "create_post",
             "remove_like",
@@ -345,10 +398,62 @@ if __name__ == "__main__":
                     server[1][method]["avg_ms"],
                     server[1][method]["max_ms"],
                     server[1][method]["min_ms"],
-                    server[1][method]["success_rate"],
                 ]
             )
-    with open("out/data.csv", "w", newline="") as csv_file:
+
+    with open("out/summary.csv", "w", newline="") as csv_file:
         writer = csv.writer(csv_file)
         writer.writerows(csv_data)
+
+    csv_data = [
+        [
+            "Method",
+            "REST",
+            "GraphQL",
+            "Hybrid",
+        ]
+    ]
+
+    for method in (
+        "create_post",
+        "remove_like",
+        "update_status",
+        "latest_post",
+        "friends",
+        "latest_friend_comment",
+    ):
+        csv_data.append(
+            [
+                method,
+                rest[method]["avg_ms"],
+                gql[method]["avg_ms"],
+                hybrid[method]["avg_ms"],
+            ]
+        )
+
+    with open("out/averages.csv", "w", newline="") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerows(csv_data)
+
+
+def main():
+    SEED = 20
+    random.seed(SEED)
+    init_db()
+    print("Testing REST...")
+    rest = test_rest(100)
+    random.seed(SEED)
+    init_db()
+    print("Testing GraphQL...")
+    graphql = test_graphql(100)
+    random.seed(SEED)
+    init_db()
+    print("Testing Hybrid...")
+    hybrid = test_hybrid(100)
+
+    create_csvs(rest, graphql, hybrid)
     # create_plots(rest, graphql, hybrid)
+
+
+if __name__ == "__main__":
+    main()

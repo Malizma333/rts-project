@@ -91,7 +91,6 @@ def seed(db, n=1000):
         User.insert_many(users).execute()
 
     users = list(User.select())
-    print(f"Inserted {len(users)} users")
 
     with db.atomic():
         posts = []
@@ -107,7 +106,6 @@ def seed(db, n=1000):
         Post.insert_many(posts).execute()
 
     posts = list(Post.select())
-    print(f"Inserted {len(posts)} posts")
 
     with db.atomic():
         likes = []
@@ -121,8 +119,6 @@ def seed(db, n=1000):
                 }
             )
         Like.insert_many(likes).execute()
-
-    print(f"Inserted {n} likes")
 
     with db.atomic():
         friendships = set()
@@ -144,8 +140,6 @@ def seed(db, n=1000):
 
         Friendship.insert_many(rows).execute()
 
-    print(f"Inserted {n} friendships")
-
     with db.atomic():
         comments = []
         for _ in range(n):
@@ -160,8 +154,6 @@ def seed(db, n=1000):
                 }
             )
         Comment.insert_many(comments).execute()
-
-    print(f"Inserted {n} comments")
 
     print("Seeding complete.")
 

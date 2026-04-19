@@ -6,44 +6,66 @@ import database
 app = Flask(__name__)
 
 
+class CommentType(graphene.ObjectType):
+    id = graphene.Int()
+    content = graphene.String()
+    created_at = graphene.String()
+
+
 class PostType(graphene.ObjectType):
     id = graphene.Int()
     content = graphene.String()
 
 
+class UserType(graphene.ObjectType):
+    id = graphene.Int()
+    username = graphene.String()
+    status = graphene.String()
+
+    friends = graphene.List(lambda: UserType)
+    posts = graphene.List(PostType)
+    comments = graphene.List(CommentType)
+
+    def resolve_friends(self, info):
+        return resolve_friends(self, info)
+
+    def resolve_posts(self, info):
+        return resolve_posts(self, info)
+
+    def resolve_comments(self, info):
+        return resolve_comments(self, info)
+
+
+def resolve_friends(parent, info):
+    return [
+        f.friend
+        for f in database.Friendship.select().where(
+            database.Friendship.user == parent.id
+        )
+    ]
+
+
+def resolve_posts(parent, info):
+    return (
+        database.Post.select()
+        .where(database.Post.user == parent.id)
+        .order_by(database.Post.created_at.desc())
+    )
+
+
+def resolve_comments(parent, info):
+    return (
+        database.Comment.select()
+        .where(database.Comment.user == parent.id)
+        .order_by(database.Comment.created_at.desc())
+    )
+
+
 class Query(graphene.ObjectType):
-    latest_post = graphene.Field(PostType, user_id=graphene.Int())
-    friends = graphene.List(graphene.Int, user_id=graphene.Int())
-    latest_friend_comment = graphene.String(user_id=graphene.Int())
+    user = graphene.Field(UserType, id=graphene.Int(required=True))
 
-    def resolve_latest_post(self, info, user_id):
-        post = (
-            database.Post.select()
-            .where(database.Post.user == user_id)
-            .order_by(database.Post.created_at.desc())
-            .first()
-        )
-        return post
-
-    def resolve_friends(self, info, user_id):
-        return [
-            f.friend.id
-            for f in database.Friendship.select().where(
-                database.Friendship.user == user_id
-            )
-        ]
-
-    def resolve_latest_friend_comment(self, info, user_id):
-        friends = database.Friendship.select(database.Friendship.friend).where(
-            database.Friendship.user == user_id
-        )
-        comment = (
-            database.Comment.select()
-            .where(database.Comment.user.in_(friends))
-            .order_by(database.Comment.created_at.desc())
-            .first()
-        )
-        return comment.content if comment else None
+    def resolve_user(self, info, id):
+        return database.User.get_by_id(id)
 
 
 class CreatePost(graphene.Mutation):
